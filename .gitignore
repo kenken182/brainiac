@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Xcode user data + build output
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.moved-aside
+
+# Shared schemes contain dev API keys (env vars) — never commit.
+# Collaborators recreate them via Xcode > Manage Schemes.
+Mindflow.xcodeproj/xcshareddata/xcschemes/
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+
+# Node (AgentRuntime/)
+node_modules/
+
+# Env files
+.env
+.env.*
+!.env.example
