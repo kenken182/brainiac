@@ -261,7 +261,11 @@ struct GbrainPageView: View {
     /// the loader above keeps the pane blank until we know which one to show.
     @ViewBuilder private var loadedContent: some View {
         if let body = pageBody, !body.isEmpty {
-            SourceMarkdownView(markdown: body)
+            // Strip the YAML frontmatter header before rendering — users don't
+            // need to see the raw `---\ntype: ...\n---` block when reading the
+            // page. The Edit mode still shows it (so they can change it).
+            MarkdownBlocksView(Self.stripFrontmatter(body), baseSize: 14, color: .primary, spacing: 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             ContentUnavailableView(
                 "Page not found",
@@ -331,6 +335,16 @@ struct GbrainPageView: View {
     }
 
     // MARK: - helpers
+
+    /// Drop the leading `---\n...\n---\n` YAML frontmatter, if present, so the
+    /// rendered view shows just the prose body. Edit mode still preserves the
+    /// frontmatter (since the user might want to change tags / type / title).
+    static func stripFrontmatter(_ raw: String) -> String {
+        guard raw.hasPrefix("---\n") else { return raw }
+        let after = raw.dropFirst(4)  // drop the opening "---\n"
+        guard let endRange = after.range(of: "\n---\n") else { return raw }
+        return String(after[endRange.upperBound...])
+    }
 
     private var directory: String? {
         guard let i = slug.firstIndex(of: "/") else { return nil }

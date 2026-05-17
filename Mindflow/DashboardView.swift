@@ -11,16 +11,30 @@
 
 import SwiftUI
 
-/// Unified selection for the sidebar — either a captured memory by UUID, or a
-/// gbrain page by slug. Hashable so it works as a `List(selection:)` binding.
+/// Unified selection for the sidebar — captured memory, a gbrain page by slug
+/// (raw markdown view), or a concept topic (rendered TopicArticleView).
 enum DashboardSelection: Hashable {
     case memory(MemoryRecord.ID)
     case page(String)
+    case topic(String)
+    case reference(String)
 }
 
 struct DashboardView: View {
     @Environment(AppCore.self) private var appCore
-    @State private var selection: DashboardSelection?
+    @State private var topics: [GbrainListEntry] = []
+    @State private var topicsLoading: Bool = false
+
+    /// Binding that bridges SwiftUI's List `selection:` (which needs a Binding)
+    /// to AppCore's owned `dashboardSelection`. Defined as a computed property
+    /// so helper view methods can use it (the previous in-body `let` wasn't
+    /// visible from outside `body`).
+    private var selectionBinding: Binding<DashboardSelection?> {
+        Binding(
+            get: { appCore.dashboardSelection },
+            set: { appCore.dashboardSelection = $0 }
+        )
+    }
 
     var body: some View {
         @Bindable var search = appCore.gbrainSearch
@@ -38,6 +52,13 @@ struct DashboardView: View {
             detail
         }
         .navigationTitle("Brainiac")
+        .task { await loadTopics() }
+    }
+
+    private func loadTopics() async {
+        topicsLoading = true
+        topics = await appCore.gbrainClient.listPages(prefix: "concepts/", limit: 200)
+        topicsLoading = false
     }
 
     // MARK: - sidebar
@@ -46,15 +67,37 @@ struct DashboardView: View {
         let search = appCore.gbrainSearch
         if !search.query.trimmingCharacters(in: .whitespaces).isEmpty {
             searchList(search)
-        } else if appCore.memoryStore.memories.isEmpty {
+        } else if appCore.memoryStore.memories.isEmpty && topics.isEmpty && !topicsLoading {
             emptyState
         } else {
-            memoryList
+            libraryAndMemoryList
         }
     }
 
-    private var memoryList: some View {
-        List(selection: $selection) {
+    private var libraryAndMemoryList: some View {
+        List(selection: selectionBinding) {
+            if !topics.isEmpty || topicsLoading {
+                Section {
+                    if topicsLoading && topics.isEmpty {
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.5)
+                            Text("Loading library…").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                    } else {
+                        ForEach(topics) { topic in
+                            TopicRow(entry: topic)
+                                .tag(DashboardSelection.topic(topic.leaf))
+                        }
+                    }
+                } header: {
+                    Text("Library")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.7)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             ForEach(memoryGroups) { group in
                 Section {
                     ForEach(group.memories) { memory in
@@ -102,7 +145,7 @@ struct DashboardView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(selection: $selection) {
+            List(selection: selectionBinding) {
                 ForEach(resultGroups(search.results)) { group in
                     Section {
                         ForEach(group.results) { result in
@@ -144,7 +187,7 @@ struct DashboardView: View {
     // MARK: - detail
 
     @ViewBuilder private var detail: some View {
-        switch selection {
+        switch appCore.dashboardSelection {
         case .memory(let id):
             if let memory = appCore.memoryStore.memories.first(where: { $0.id == id }) {
                 MemoryDetail(memory: memory)
@@ -155,16 +198,26 @@ struct DashboardView: View {
             GbrainPageView(
                 slug: slug,
                 onDelete: {
-                    // Drop the selection so the detail pane reverts to the placeholder,
-                    // and re-run the active search so the deleted slug stops appearing
-                    // in the sidebar list.
-                    selection = nil
+                    appCore.dashboardSelection = nil
                     appCore.gbrainSearch.queryDidChange()
+                    Task { await loadTopics() }
                 },
                 onOpenPage: { newSlug in
-                    selection = .page(newSlug)
+                    appCore.dashboardSelection = .page(newSlug)
                 }
             )
+        case .topic(let slug):
+            TopicArticleView(
+                slug: slug,
+                onOpenTopic: { newSlug in
+                    appCore.dashboardSelection = .topic(newSlug)
+                },
+                onOpenReference: { refSlug in
+                    appCore.dashboardSelection = .reference(refSlug)
+                }
+            )
+        case .reference(let slug):
+            ReferenceDetailView(slug: slug)
         case .none:
             detailPlaceholder
         }
@@ -220,6 +273,42 @@ struct ResultGroup: Identifiable {
     let id: String
     let title: String
     let results: [GbrainSearchResult]
+}
+
+struct TopicRow: View {
+    let entry: GbrainListEntry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "book.pages")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.mfAccent)
+                Text(displayTitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            Text(entry.updated)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var displayTitle: String {
+        // Prefer the title from `gbrain list` if it's non-empty; fall back to
+        // a titleized slug leaf otherwise.
+        if !entry.title.isEmpty && entry.title != entry.slug {
+            return entry.title
+        }
+        return entry.leaf
+            .components(separatedBy: "-")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
 }
 
 struct MemoryGroup: Identifiable {

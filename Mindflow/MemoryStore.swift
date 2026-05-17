@@ -12,6 +12,10 @@ import Observation
 @Observable
 final class MemoryStore {
     private(set) var memories: [MemoryRecord] = []
+    /// Transient per-memory enrichment state. Absent = idle/done. Drives the
+    /// "Processing…" pill in the sidebar row while topic extraction + concept
+    /// upserts run in the background. Cleared on completion (or failure).
+    private(set) var enrichmentStatus: [UUID: EnrichmentStatus] = [:]
     private let logURL: URL
 
     init() {
@@ -40,6 +44,14 @@ final class MemoryStore {
         }
 
         memories.insert(record, at: 0)
+    }
+
+    func setEnrichmentStatus(_ status: EnrichmentStatus?, for id: UUID) {
+        if let status {
+            enrichmentStatus[id] = status
+        } else {
+            enrichmentStatus.removeValue(forKey: id)
+        }
     }
 
     private func loadAll() {

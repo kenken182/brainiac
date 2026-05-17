@@ -92,6 +92,12 @@ final class ChatAgent {
     private let chatClient: ClaudeChatClient // fallback if bridge unavailable
     private let gbrainSaver: GbrainSaver
     private let memoryStore: MemoryStore
+    private let enrichmentPipeline: EnrichmentPipeline
+    private let pageSwitchMonitor: PageSwitchMonitor
+    /// Latest URL detected by the monitor — supersedes session.sourceURL when
+    /// the user switches tabs mid-session. Read by sendUserMessage so typed
+    /// follow-ups carry fresh URL context.
+    private var liveURL: String?
     /// Raw conversation in Anthropic API format. Used only when falling back to the direct API.
     private var apiMessages: [[String: Any]] = []
     /// Compact (user, assistant) history threaded into bridge turns.
@@ -107,14 +113,25 @@ final class ChatAgent {
         let sourceURL: String?
     }
 
-    init(anthropicApiKey: String, memoryStore: MemoryStore) {
+    init(anthropicApiKey: String, memoryStore: MemoryStore, notifier: Notifier) {
         self.chatClient = ClaudeChatClient(apiKey: anthropicApiKey)
-        self.gbrainSaver = GbrainSaver()
+        let gbrainSaver = GbrainSaver()
+        self.gbrainSaver = gbrainSaver
         self.memoryStore = memoryStore
+        self.enrichmentPipeline = EnrichmentPipeline(
+            apiKey: anthropicApiKey,
+            gbrainSaver: gbrainSaver,
+            notifier: notifier
+        )
+        self.pageSwitchMonitor = PageSwitchMonitor()
         self.bridge = MindflowAgentBridge(
             systemPrompt: Self.buildSystemPrompt()
         )
         self.bridge?.warmUp()
+        self.pageSwitchMonitor.onURLChange = { [weak self] newURL in
+            self?.liveURL = newURL
+            print("[ChatAgent] page switch detected: \(newURL ?? "(none)")")
+        }
     }
 
     /// System prompt — keeps token budget tight by pointing the agent at the
@@ -146,7 +163,18 @@ final class ChatAgent {
 
         Bash, Read, Write, Grep, Glob, WebFetch, WebSearch. For gbrain operations, shell out to the `gbrain` CLI (`gbrain put`, `gbrain search`, `gbrain list`, `gbrain get`).
 
-        Skills bundled at \(skillsDir)/ — Read the one(s) that match the situation BEFORE acting:
+        ## Concept lookups (their library is your shared notebook)
+
+        When the user touches a topic that they might have engaged with before (rate limiting, circuit breakers, retries, embeddings, etc.) — run `gbrain get concepts/<topic-slug>` (or `gbrain search <topic>` if you're unsure of the slug) on your first relevant turn to see if they have prior thinking on it.
+
+        - **If a non-stub topic page exists**, weave a brief reference to their prior take into your response naturally — as part of the conversation, not as a sidebar. Include a markdown link to the reference (the session record where they said it) in the form `[your earlier session](brainiac://reference/<reference-slug>)`. The reference slug is in the topic page's `## Sources` section.
+        - **Bias against mechanical "you said before…" inserts.** Aim for natural conversational weaving: *"This is the standard token-bucket Stripe documents — though in [your earlier session](brainiac://reference/2026-05-16-stripe-rate-limits) you wrote that leaky-bucket made more sense for our gateway because of burst patterns. Want to compare?"*
+        - **Max 1–2 surfacings per session.** Don't pull in every related topic; only surface when their prior take is genuinely load-bearing for the current question.
+        - **No matching page found** → just answer the question normally. Don't apologize for the absence.
+
+        ## Skills
+
+        Bundled at \(skillsDir)/ — Read the one(s) that match the situation BEFORE acting:
         - voice-note-ingest/SKILL.md — verbatim transcript filing.
         - media-ingest/SKILL.md — screenshots, videos, PDFs, books, GitHub repos.
         - brain-ops/SKILL.md — the canonical read/enrich/write cycle. Required before any `gbrain put`.
@@ -193,6 +221,8 @@ final class ChatAgent {
             sourceAppName: trimmedAppName.isEmpty ? nil : trimmedAppName,
             sourceURL: url
         )
+        liveURL = url
+        pageSwitchMonitor.start(initialURL: url)
 
         messages.removeAll()
         apiMessages.removeAll()
@@ -293,16 +323,28 @@ final class ChatAgent {
         print("[ChatAgent]   appendContextTurn returned: messages.count=\(messages.count)")
     }
 
-    /// Append a user follow-up message and run the agent loop.
+    /// Append a user follow-up message and run the agent loop. Typed turns
+    /// don't capture a fresh screenshot, but we DO surface the live URL when
+    /// the page-switch monitor saw the user navigate to a new article — that
+    /// way the agent (per system prompt) re-fetches when needed.
     func sendUserMessage(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        // Typed follow-ups: display text == agent prompt; no app-context framing.
-        messages.append(ChatMessage(kind: .user(text: trimmed, agentPrompt: trimmed, imageData: nil)))
+        let sessionURL = currentSession?.sourceURL
+        let urlChanged = liveURL != nil && liveURL != sessionURL
+        let displayText = trimmed
+        let agentPrompt: String = {
+            if urlChanged, let live = liveURL, !live.isEmpty {
+                return "(I've navigated to: \(live))\n\n\(trimmed)"
+            }
+            return trimmed
+        }()
+
+        messages.append(ChatMessage(kind: .user(text: displayText, agentPrompt: agentPrompt, imageData: nil)))
         apiMessages.append([
             "role": "user",
-            "content": [["type": "text", "text": trimmed]],
+            "content": [["type": "text", "text": agentPrompt]],
         ])
 
         await runAgentLoop()
@@ -356,6 +398,8 @@ final class ChatAgent {
     func endCurrentSession() {
         guard let session = currentSession else { return }
         currentSession = nil
+        pageSwitchMonitor.stop()
+        liveURL = nil
 
         let snapshotMessages = messages
 
@@ -377,20 +421,26 @@ final class ChatAgent {
             print("[ChatAgent] failed to log memory \(session.id): \(error)")
         }
 
-        // Deterministic session-end gbrain ingest. Runs in the background so
-        // popup dismissal isn't blocked. Complements (doesn't replace) anything
-        // the agent already saved while the conversation was active.
-        let saver = gbrainSaver
-        Task {
-            let body = Self.buildSessionMarkdown(session: session, messages: snapshotMessages)
-            let slug = "mindflow-\(Int(session.startedAt.timeIntervalSince1970))"
-            let path = "voice-notes/\(slug)"
-            do {
-                try await saver.putRaw(path: path, body: body)
-                print("[ChatAgent] session pushed to gbrain at \(path)")
-            } catch {
-                print("[ChatAgent] failed to push session to gbrain: \(error)")
-            }
+        // Post-session enrichment: runs in the background so popup dismissal
+        // isn't blocked. Writes (1) the immutable reference page, (2) re-rolled
+        // concept page(s), and fires a "topic updated" notification when done.
+        // The sidebar row shows a "Processing…" pill until this Task returns.
+        let pipeline = enrichmentPipeline
+        let store = memoryStore
+        let conversationMarkdown = Self.buildSessionMarkdown(session: session, messages: snapshotMessages)
+        store.setEnrichmentStatus(.processing, for: session.id)
+        Task { @MainActor in
+            await pipeline.enrich(.init(
+                sessionID: session.id,
+                sessionStartedAt: session.startedAt,
+                sourceAppName: session.sourceAppName,
+                sourceURL: session.sourceURL,
+                screenshotPath: session.screenshotPath,
+                initialTranscript: session.initialTranscript,
+                conversationMarkdown: conversationMarkdown,
+                learner: NSUserName()
+            ))
+            store.setEnrichmentStatus(nil, for: session.id)
         }
 
         // Clear chat state so the next popup opens fresh. The panel is already

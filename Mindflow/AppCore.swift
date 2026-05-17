@@ -9,6 +9,7 @@
 //  Environment Variables. Add ANTHROPIC_API_KEY and DEEPGRAM_API_KEY there.
 //
 
+import AppKit
 import Foundation
 import Observation
 
@@ -21,6 +22,11 @@ final class AppCore {
     let gbrainSearch: GbrainSearch
     let chatAgent: ChatAgent
     let popup: PopupController
+
+    /// Single source of truth for the dashboard's currently-selected row.
+    /// Mutated by deep-link navigation (`openLearningLink`) and by the
+    /// DashboardView itself (two-way binding).
+    var dashboardSelection: DashboardSelection? = nil
 
     private let saver: MindflowSaver
     private let hotkey: HotkeyMonitor
@@ -57,7 +63,11 @@ final class AppCore {
         let popup = PopupController()
         self.popup = popup
 
-        let chatAgent = ChatAgent(anthropicApiKey: anthropicKey, memoryStore: memoryStore)
+        let chatAgent = ChatAgent(
+            anthropicApiKey: anthropicKey,
+            memoryStore: memoryStore,
+            notifier: notifier
+        )
         self.chatAgent = chatAgent
 
         let saver = MindflowSaver(
@@ -85,6 +95,35 @@ final class AppCore {
         // Inject the agent reference into the popup. PopupController uses it to
         // (a) render ChatPopupView and (b) call endCurrentSession on hide.
         popup.attach(chatAgent: chatAgent)
+        // Route brainiac:// link clicks from chat into dashboard navigation.
+        popup.onChatOpenURL = { [weak self] url in
+            self?.openLearningLink(url)
+        }
+        // Topic-updated notifications: tap opens the topic page.
+        notifier.onTopicTap = { [weak self] topicSlug in
+            self?.dashboardSelection = .topic(topicSlug)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Handle a `brainiac://` deep-link by setting the dashboard selection and
+    /// bringing the dashboard window forward. Supported hosts:
+    ///   - `brainiac://topic/<slug>`     → TopicArticleView for that concept
+    ///   - `brainiac://reference/<slug>` → raw markdown view for media/<slug>
+    func openLearningLink(_ url: URL) {
+        guard url.scheme == "brainiac" else { return }
+        let host = url.host ?? ""
+        let tail = url.pathComponents.dropFirst().joined(separator: "/")
+        guard !tail.isEmpty else { return }
+        switch host {
+        case "topic":
+            dashboardSelection = .topic(tail)
+        case "reference":
+            dashboardSelection = .reference(tail)
+        default:
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func start() {

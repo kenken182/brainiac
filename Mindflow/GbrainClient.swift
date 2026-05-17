@@ -31,6 +31,28 @@ struct GbrainBacklink: Codable, Hashable, Sendable, Identifiable {
     var id: String { "\(fromSlug)->\(toSlug)#\(linkType)" }
 }
 
+/// One row of `gbrain list` output. Tab-separated columns: slug, type, date, title.
+struct GbrainListEntry: Identifiable, Hashable, Sendable {
+    let slug: String
+    let type: String
+    let updated: String  // raw date string as returned by `gbrain list` (e.g. "Sat May 16")
+    let title: String
+
+    var id: String { slug }
+
+    /// Slug "directory" — e.g. `concepts/rate-limiting` → `concepts`.
+    var directory: String? {
+        guard let i = slug.firstIndex(of: "/") else { return nil }
+        return String(slug[..<i])
+    }
+
+    /// Slug leaf — e.g. `concepts/rate-limiting` → `rate-limiting`.
+    var leaf: String {
+        guard let i = slug.lastIndex(of: "/") else { return slug }
+        return String(slug[slug.index(after: i)...])
+    }
+}
+
 struct GbrainSearchResult: Identifiable, Hashable, Sendable {
     var id: String { slug }
     let slug: String
@@ -144,6 +166,27 @@ final class GbrainClient: @unchecked Sendable {
         }
         flush()
         return results
+    }
+
+    /// List pages, optionally filtered by directory prefix (e.g. `concepts/`).
+    /// `gbrain list` output is tab-separated; the prefix filter is applied
+    /// client-side because the CLI doesn't accept a slug-prefix flag.
+    func listPages(prefix: String? = nil, limit: Int = 200) async -> [GbrainListEntry] {
+        let result = await run(args: ["list", "--limit", "\(limit)"])
+        guard result.exitCode == 0 else { return [] }
+        var entries: [GbrainListEntry] = []
+        for rawLine in result.stdout.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = String(rawLine)
+            let cols = line.components(separatedBy: "\t")
+            guard cols.count >= 4 else { continue }
+            let slug = cols[0].trimmingCharacters(in: .whitespaces)
+            let type = cols[1].trimmingCharacters(in: .whitespaces)
+            let updated = cols[2].trimmingCharacters(in: .whitespaces)
+            let title = cols[3].trimmingCharacters(in: .whitespaces)
+            if let prefix, !slug.hasPrefix(prefix) { continue }
+            entries.append(GbrainListEntry(slug: slug, type: type, updated: updated, title: title))
+        }
+        return entries
     }
 
     /// Combined fetch: body + full backlinks list in one go, ran in parallel.

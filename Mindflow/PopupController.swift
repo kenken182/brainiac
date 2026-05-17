@@ -11,6 +11,9 @@ import SwiftUI
 @MainActor
 final class PopupController {
     let state = PopupState()
+    /// Callback set by AppCore — invoked when the user clicks a `brainiac://`
+    /// link in the chat. Routes to dashboard deep-link navigation.
+    var onChatOpenURL: ((URL) -> Void)?
 
     private var panel: NSPanel?
     private var hideTask: Task<Void, Never>?
@@ -168,6 +171,9 @@ final class PopupController {
                     )
                     self?.resize(to: newSize)
                 }
+            },
+            onOpenURL: { [weak self] url in
+                self?.onChatOpenURL?(url)
             }
         )
         let hosting = NSHostingView(rootView: view)

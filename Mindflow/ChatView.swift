@@ -11,6 +11,9 @@ struct ChatView: View {
     var onClose: (() -> Void)? = nil
     var onMinimize: (() -> Void)? = nil
     var onResize: ((CGSize) -> Void)? = nil
+    /// Called when the user clicks a `brainiac://` link in an agent message.
+    /// Routes through PopupController → AppCore.openLearningLink.
+    var onOpenURL: ((URL) -> Void)? = nil
 
     private static let userBubbleFill = Color(red: 0.86, green: 0.93, blue: 0.98)
     private static let userBubbleText = Color(red: 0.10, green: 0.32, blue: 0.55)
@@ -185,6 +188,13 @@ struct ChatView: View {
             .padding(.trailing, 3)
             .padding(.bottom, 3)
         }
+        .environment(\.openURL, OpenURLAction { url in
+            if url.scheme == "brainiac" {
+                onOpenURL?(url)
+                return .handled
+            }
+            return .systemAction
+        })
     }
 
     // MARK: - header
@@ -247,19 +257,64 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(Array(agent.messages.enumerated()), id: \.element.id) { idx, msg in
-                        messageRow(msg, isLast: idx == agent.messages.count - 1)
+                    let lastVisibleID = lastVisibleMessageID
+                    ForEach(Array(agent.messages.enumerated()), id: \.element.id) { _, msg in
+                        messageRow(msg, isLast: msg.id == lastVisibleID)
                             .id(msg.id)
                     }
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
             }
+            // Scroll on new messages AND on streaming text growth of the last
+            // assistant message (count alone doesn't fire while the same row's
+            // text grows chunk by chunk).
             .onChange(of: agent.messages.count) { _, _ in
-                if let last = agent.messages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
+                scrollToBottom(proxy: proxy)
             }
+            .onChange(of: lastVisibleContent) { _, _ in
+                scrollToBottom(proxy: proxy)
+            }
+        }
+    }
+
+    /// ID of the last *visible* message (toolCall/toolResult render as EmptyView,
+    /// so they shouldn't count). Drives the assistant bubble's "isLast" affordances
+    /// — the loading placeholder and the agent ticker — so they stay attached to
+    /// the in-progress assistant bubble while the SDK is firing tool_use blocks.
+    private var lastVisibleMessageID: UUID? {
+        agent.messages.last { msg in
+            switch msg.kind {
+            case .toolCall, .toolResult: return false
+            default: return true
+            }
+        }?.id
+    }
+
+    /// A string that changes whenever the bottom of the chat visually changes:
+    /// message count, the last message's text content, and the ticker state.
+    /// Used as a single `.onChange` key so streaming deltas always scroll.
+    private var lastVisibleContent: String {
+        var key = "\(agent.messages.count)|"
+        if let last = agent.messages.last {
+            switch last.kind {
+            case .assistant(let text): key += "a:\(text.count)"
+            case .user(let text, _, _): key += "u:\(text.count)"
+            case .toolCall(let name, let summary): key += "tc:\(name):\(summary.count)"
+            case .toolResult(let name, let content): key += "tr:\(name):\(content.count)"
+            case .error(let msg): key += "e:\(msg.count)"
+            }
+        }
+        if let step = agent.currentStep {
+            key += "|step:\(step.index):\(step.kind.rawValue)"
+        }
+        return key
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        guard let last = agent.messages.last else { return }
+        withAnimation(.easeOut(duration: 0.12)) {
+            proxy.scrollTo(last.id, anchor: .bottom)
         }
     }
 
@@ -309,9 +364,13 @@ struct ChatView: View {
     private func assistantBubble(text: String, isLast: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if text.isEmpty && isLast && agent.isThinking {
-                Text("Capturing your note…")
-                    .font(.system(size: 13).italic())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    TickerSpinner(color: Self.warmAccent)
+                        .frame(width: 11, height: 11)
+                    Text("Thinking…")
+                        .font(.system(size: 13).italic())
+                        .foregroundStyle(.secondary)
+                }
             } else if !text.isEmpty {
                 ForEach(Array(Self.parseBlocks(text).enumerated()), id: \.offset) { _, block in
                     blockView(block, color: .black)

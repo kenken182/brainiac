@@ -45,6 +45,14 @@ struct MemoryRecord: Codable, Identifiable, Hashable {
     }
 }
 
+/// Transient (in-memory only) state for the background enrichment pass that
+/// runs after a session ends — extracts topics from the transcript and writes
+/// reference/concept pages into gbrain. Not persisted: on relaunch every
+/// memory should already be "done", since the pipeline doesn't survive quit.
+enum EnrichmentStatus: Hashable {
+    case processing
+}
+
 enum PersistedChatMessage: Codable, Hashable {
     case user(text: String)
     case assistant(text: String)

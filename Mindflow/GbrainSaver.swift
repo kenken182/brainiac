@@ -7,6 +7,7 @@ import Foundation
 
 enum GbrainSaverError: Error {
     case putFailed(Int, String)
+    case getFailed(Int, String)
 }
 
 @MainActor
@@ -29,6 +30,47 @@ final class GbrainSaver {
             anchorType: anchorType
         )
         try await putRaw(path: path, body: body)
+    }
+
+    /// Shell `gbrain get <slug>` and return the raw markdown contents. Returns
+    /// `nil` when the page doesn't exist (exit code non-zero with empty stdout).
+    /// Used by the EnrichmentPipeline to load an existing concept page before
+    /// re-rolling its article body.
+    func getRaw(path: String) async throws -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: gbrainPath)
+        process.arguments = ["get", path]
+
+        var env = ProcessInfo.processInfo.environment
+        let extraPaths = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "\(NSHomeDirectory())/.bun/bin",
+        ]
+        let existingPath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = "\(extraPaths.joined(separator: ":")):\(existingPath)"
+        process.environment = env
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+        await Task.detached { process.waitUntilExit() }.value
+
+        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        let outText = String(data: outData, encoding: .utf8) ?? ""
+        let errText = String(data: errData, encoding: .utf8) ?? ""
+
+        if process.terminationStatus != 0 {
+            // Not-found is a normal case for the pipeline (new concept).
+            // Distinguish it from real errors by checking if stdout is empty.
+            if outText.isEmpty { return nil }
+            throw GbrainSaverError.getFailed(Int(process.terminationStatus), errText)
+        }
+        return outText
     }
 
     /// Shell `gbrain put <path>` with `body` on stdin. Used directly when the

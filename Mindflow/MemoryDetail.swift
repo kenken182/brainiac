@@ -204,7 +204,7 @@ struct ChatMessageRow: View {
         case .user(let text):
             HStack {
                 Spacer(minLength: 60)
-                Text(text)
+                MarkdownBlocksView(text, baseSize: 13, color: .primary, spacing: 8)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(Color.secondary.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -213,9 +213,8 @@ struct ChatMessageRow: View {
         case .assistant(let text):
             HStack(alignment: .top, spacing: 10) {
                 MindflowAvatar()
-                Text(text)
+                MarkdownBlocksView(text, baseSize: 14, color: .primary, spacing: 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
             }
         case .toolCall(let name, let summary):
             HStack(spacing: 8) {

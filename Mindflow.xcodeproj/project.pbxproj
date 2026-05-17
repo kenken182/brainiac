@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		D57E50DB2FB90E0900F0CC35 /* Mindflow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mindflow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D57E50DB2FB90E0900F0CC35 /* Brainiac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Brainiac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		D57E50DC2FB90E0900F0CC35 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D57E50DB2FB90E0900F0CC35 /* Mindflow.app */,
+				D57E50DB2FB90E0900F0CC35 /* Brainiac.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -67,7 +67,7 @@
 			packageProductDependencies = (
 			);
 			productName = Mindflow;
-			productReference = D57E50DB2FB90E0900F0CC35 /* Mindflow.app */;
+			productReference = D57E50DB2FB90E0900F0CC35 /* Brainiac.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -258,10 +258,10 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Brainiac;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Mindflow reads the active Chrome tab URL to give the assistant context for your voice note.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Brainiac reads the active Chrome tab URL to give the assistant context for your voice note.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Mindflow records voice notes when you hold ctrl+option.";
-				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Mindflow captures the active window so it can understand context for your voice notes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Brainiac records voice notes when you hold ctrl+option.";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Brainiac captures the active window so it can understand context for your voice notes.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -274,7 +274,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.keefeho.Mindflow;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Brainiac;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -300,10 +300,10 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Brainiac;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Mindflow reads the active Chrome tab URL to give the assistant context for your voice note.";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Brainiac reads the active Chrome tab URL to give the assistant context for your voice note.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Mindflow records voice notes when you hold ctrl+option.";
-				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Mindflow captures the active window so it can understand context for your voice notes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Brainiac records voice notes when you hold ctrl+option.";
+				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Brainiac captures the active window so it can understand context for your voice notes.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -316,7 +316,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.keefeho.Mindflow;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Brainiac;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

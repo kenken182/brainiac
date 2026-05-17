@@ -36,6 +36,7 @@ struct ChatPopupView: View {
     let onClose: () -> Void
     let onMinimize: () -> Void
     let onResize: (CGSize) -> Void
+    var onOpenURL: ((URL) -> Void)? = nil
 
     var body: some View {
         let _ = print("[ChatPopupView] body() — messages.count=\(agent.messages.count), mode=\(agent.messages.isEmpty ? "PILL" : "CHAT")")
@@ -44,7 +45,7 @@ struct ChatPopupView: View {
                 RecordingPopupView(state: state)
                     .onAppear { print("[ChatPopupView] >>> PILL branch onAppear") }
             } else {
-                ChatView(agent: agent, onClose: onClose, onMinimize: onMinimize, onResize: onResize)
+                ChatView(agent: agent, onClose: onClose, onMinimize: onMinimize, onResize: onResize, onOpenURL: onOpenURL)
                     .onAppear { print("[ChatPopupView] >>> CHAT branch onAppear (messages.count=\(agent.messages.count))") }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background {

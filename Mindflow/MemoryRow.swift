@@ -9,6 +9,11 @@ import AppKit
 
 struct MemoryRow: View {
     let memory: MemoryRecord
+    @Environment(AppCore.self) private var appCore
+
+    private var isProcessing: Bool {
+        appCore.memoryStore.enrichmentStatus[memory.id] == .processing
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -70,6 +75,9 @@ struct MemoryRow: View {
         let replyCount = memory.assistantMessageCount
 
         HStack(spacing: 4) {
+            if isProcessing {
+                ProcessingPill()
+            }
             if replyCount > 0 {
                 DeltaPill(text: "\(replyCount) \(replyCount == 1 ? "reply" : "replies")", style: .neutral)
             }
@@ -80,6 +88,29 @@ struct MemoryRow: View {
                 DeltaPill(text: "✦ saved", style: .accent)
             }
         }
+    }
+}
+
+struct ProcessingPill: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            ProgressView()
+                .controlSize(.mini)
+                .scaleEffect(0.7)
+            Text("Extracting memories…")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color.mfAccent)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background(
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color.mfAccentBg)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.mfAccent.opacity(0.3), lineWidth: 0.5)
+        )
     }
 }
 

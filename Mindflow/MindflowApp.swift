@@ -12,12 +12,19 @@ struct MindflowApp: App {
     @State private var appCore = AppCore()
 
     var body: some Scene {
-        Window("Mindflow", id: "dashboard") {
+        Window("Brainiac", id: "dashboard") {
             DashboardView()
                 .environment(appCore)
                 .frame(minWidth: 900, minHeight: 600)
                 .preferredColorScheme(.light)
+                .onOpenURL { url in
+                    // External `brainiac://` clicks land here once the URL
+                    // scheme is registered in Info.plist. Internal clicks from
+                    // the popup go through PopupController → AppCore.
+                    appCore.openLearningLink(url)
+                }
         }
+        .handlesExternalEvents(matching: ["brainiac"])
 
         MenuBarExtra {
             MenuBarMenuContent(appCore: appCore)
@@ -47,7 +54,7 @@ struct MenuBarMenuContent: View {
             Divider()
         }
 
-        Button("Open Mindflow Dashboard") {
+        Button("Open Brainiac Dashboard") {
             openWindow(id: "dashboard")
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -59,7 +66,7 @@ struct MenuBarMenuContent: View {
 
         Divider()
 
-        Button("Quit Mindflow") {
+        Button("Quit Brainiac") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
