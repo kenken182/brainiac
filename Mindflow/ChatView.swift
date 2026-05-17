@@ -32,6 +32,144 @@ struct ChatView: View {
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 
+    /// One renderable block in a chat message — paragraphs, headings, lists, and
+    /// fenced code blocks. The bubble renders each as its own SwiftUI view so we
+    /// get real visual separation between paragraphs and proper bullet/number
+    /// indentation, instead of one mashed-together Text.
+    private enum TextBlock {
+        case paragraph(AttributedString)
+        case heading(level: Int, text: AttributedString)
+        case bulletList([AttributedString])
+        case numberedList([AttributedString])
+        case codeBlock(String)
+    }
+
+    /// Split a message body into TextBlocks. Splits on blank lines (`\n\n`) for
+    /// paragraph boundaries, then sniffs each chunk for heading / list / code
+    /// patterns. Inline markdown inside each block is still parsed by `markdown(_:)`.
+    private static func parseBlocks(_ text: String) -> [TextBlock] {
+        var blocks: [TextBlock] = []
+        let chunks = text.components(separatedBy: "\n\n")
+        for raw in chunks {
+            let chunk = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !chunk.isEmpty else { continue }
+
+            // Fenced code block: ```\n...\n``` (with optional language tag on the opener)
+            if chunk.hasPrefix("```") && chunk.hasSuffix("```") && chunk.count > 6 {
+                var inner = String(chunk.dropFirst(3).dropLast(3))
+                if let nl = inner.firstIndex(of: "\n") {
+                    inner = String(inner[inner.index(after: nl)...])
+                }
+                blocks.append(.codeBlock(inner.trimmingCharacters(in: .whitespacesAndNewlines)))
+                continue
+            }
+
+            // Headings — match before list / paragraph
+            if chunk.hasPrefix("### ") {
+                blocks.append(.heading(level: 3, text: markdown(String(chunk.dropFirst(4)))))
+                continue
+            }
+            if chunk.hasPrefix("## ") {
+                blocks.append(.heading(level: 2, text: markdown(String(chunk.dropFirst(3)))))
+                continue
+            }
+            if chunk.hasPrefix("# ") {
+                blocks.append(.heading(level: 1, text: markdown(String(chunk.dropFirst(2)))))
+                continue
+            }
+
+            let lines = chunk.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+            // Bullet list — every non-empty line starts with "- " or "* "
+            let bulletLines = lines.filter { !$0.isEmpty }
+            if !bulletLines.isEmpty, bulletLines.allSatisfy({ $0.hasPrefix("- ") || $0.hasPrefix("* ") }) {
+                let items = bulletLines.map { markdown(String($0.dropFirst(2))) }
+                blocks.append(.bulletList(items))
+                continue
+            }
+
+            // Numbered list — every non-empty line starts with "<digits>. "
+            if !bulletLines.isEmpty, bulletLines.allSatisfy({ $0.range(of: #"^\d+\.\s"#, options: .regularExpression) != nil }) {
+                let items = bulletLines.map { line -> AttributedString in
+                    let stripped = line.replacingOccurrences(of: #"^\d+\.\s+"#, with: "", options: .regularExpression)
+                    return markdown(stripped)
+                }
+                blocks.append(.numberedList(items))
+                continue
+            }
+
+            // Fall through: plain paragraph (preserves internal `\n` line breaks)
+            blocks.append(.paragraph(markdown(chunk)))
+        }
+        return blocks
+    }
+
+    /// Render a single TextBlock with the given foreground color. Used for both
+    /// user (blue) and assistant (black) bubbles.
+    @ViewBuilder
+    private func blockView(_ block: TextBlock, color: Color) -> some View {
+        switch block {
+        case .paragraph(let text):
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(color)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .heading(let level, let text):
+            Text(text)
+                .font(.system(size: level == 1 ? 17 : level == 2 ? 15 : 13, weight: .semibold))
+                .foregroundStyle(color)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+
+        case .bulletList(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("•")
+                            .foregroundStyle(color.opacity(0.55))
+                        Text(item)
+                            .foregroundStyle(color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    .font(.system(size: 13))
+                }
+            }
+
+        case .numberedList(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(idx + 1).")
+                            .foregroundStyle(color.opacity(0.55))
+                            .monospacedDigit()
+                        Text(item)
+                            .foregroundStyle(color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    .font(.system(size: 13))
+                }
+            }
+
+        case .codeBlock(let code):
+            Text(code)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(color)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.black.opacity(0.05))
+                )
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -54,7 +192,7 @@ struct ChatView: View {
     private var header: some View {
         HStack(spacing: 8) {
             PulseDot(color: headerDotColor, animated: agent.isRecording)
-            Text("Mindflow")
+            Text("Brainiac")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(agent.isRecording ? Self.roseAccent : .black)
             Spacer()
@@ -84,9 +222,9 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .help("Close — ends the session.")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     private var headerDotColor: Color {
@@ -108,14 +246,14 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(Array(agent.messages.enumerated()), id: \.element.id) { idx, msg in
                         messageRow(msg, isLast: idx == agent.messages.count - 1)
                             .id(msg.id)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
             }
             .onChange(of: agent.messages.count) { _, _ in
                 if let last = agent.messages.last {
@@ -132,18 +270,18 @@ struct ChatView: View {
             // Silent captures have empty display text — the screenshot was for the
             // agent, not the user. Skip the empty bubble in that case.
             if !text.isEmpty {
-                Text(Self.markdown(text))
-                    .font(.system(size: 13))
-                    .foregroundStyle(Self.userBubbleText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Self.userBubbleFill)
-                    )
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(Self.parseBlocks(text).enumerated()), id: \.offset) { _, block in
+                        blockView(block, color: Self.userBubbleText)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Self.userBubbleFill)
+                )
             }
 
         case .assistant(let text):
@@ -169,17 +307,15 @@ struct ChatView: View {
     }
 
     private func assistantBubble(text: String, isLast: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             if text.isEmpty && isLast && agent.isThinking {
                 Text("Capturing your note…")
                     .font(.system(size: 13).italic())
                     .foregroundStyle(.secondary)
             } else if !text.isEmpty {
-                Text(Self.markdown(text))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.black)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(Self.parseBlocks(text).enumerated()), id: \.offset) { _, block in
+                    blockView(block, color: .black)
+                }
             }
             if isLast, let step = agent.currentStep {
                 TickerView(step: step)
@@ -190,8 +326,8 @@ struct ChatView: View {
                     ))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -206,16 +342,40 @@ struct ChatView: View {
         HStack {
             kbdHint(keys: "⌃⌥", caption: footerHotkeyCaption)
             Spacer()
-            kbdHint(keys: "⌥⎋", caption: "close")
+            endChatButton
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
     }
 
     private var footerHotkeyCaption: String {
-        if agent.isRecording { return "tap to send" }
+        if agent.isRecording { return "release to send" }
         if agent.isThinking { return "working…" }
-        return "tap to talk"
+        return "hold to talk"
+    }
+
+    private var endChatButton: some View {
+        Button {
+            onClose?()
+        } label: {
+            HStack(spacing: 6) {
+                Text("End chat")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("⌥⎋")
+                    .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Self.kbdFill)
+                    )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("End this chat — clears state and pushes the session to gbrain.")
     }
 
     private func kbdHint(keys: String, caption: String) -> some View {
@@ -239,7 +399,7 @@ struct ChatView: View {
 
     private var composer: some View {
         HStack(alignment: .center, spacing: 8) {
-            TextField("Ask Mindflow…", text: $agent.inputDraft, axis: .vertical)
+            TextField("Ask Brainiac…", text: $agent.inputDraft, axis: .vertical)
                 .lineLimit(1...3)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))

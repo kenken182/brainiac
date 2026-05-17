@@ -257,6 +257,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Brainiac;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Mindflow reads the active Chrome tab URL to give the assistant context for your voice note.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Mindflow records voice notes when you hold ctrl+option.";
 				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Mindflow captures the active window so it can understand context for your voice notes.";
@@ -297,6 +299,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Brainiac;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Mindflow reads the active Chrome tab URL to give the assistant context for your voice note.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Mindflow records voice notes when you hold ctrl+option.";
 				INFOPLIST_KEY_NSScreenCaptureUsageDescription = "Mindflow captures the active window so it can understand context for your voice notes.";

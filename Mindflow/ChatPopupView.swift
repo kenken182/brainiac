@@ -4,12 +4,28 @@
 //  states; expands into the chat UI once the agent has any messages.
 //
 
+import AppKit
 import SwiftUI
 
 private struct SizePreferenceKey: PreferenceKey {
     static var defaultValue: CGSize = .zero
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
         value = nextValue()
+    }
+}
+
+/// Backing view that opts into AppKit's window-drag-by-background behavior.
+/// SwiftUI's hosting layer normally swallows mouse events, blocking the panel's
+/// `isMovableByWindowBackground = true` setting; placing this as a `.background`
+/// guarantees that empty regions of the popup drag the window. Interactive
+/// SwiftUI elements (buttons, text fields, the resize grip) sit on top and
+/// consume their clicks first.
+struct WindowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { MovableView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class MovableView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
     }
 }
 
@@ -54,6 +70,10 @@ struct ChatPopupView: View {
                     }
             }
         )
+        // Furthest-back layer: any click on a region not consumed by SwiftUI
+        // controls (Buttons, TextFields, the resize grip's DragGesture) hits
+        // this NSView and drags the panel.
+        .background(WindowDragArea())
         .onPreferenceChange(SizePreferenceKey.self) { newSize in
             // Only auto-resize the panel while the popup is in pill mode (no
             // chat messages yet). Once chat takes over, the user owns sizing

@@ -56,7 +56,7 @@ struct GbrainPageView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the page from your brain. It can't be undone from Mindflow.")
+            Text("This removes the page from your brain. It can't be undone from Brainiac.")
         }
     }
 

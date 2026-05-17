@@ -37,35 +37,15 @@ final class MindflowSaver {
         self.screenshotStore = screenshotStore
     }
 
-    /// True when there's no chat yet — the very first turn uses push-to-talk.
-    private var isFirstTurn: Bool { chatAgent.messages.isEmpty }
-
-    /// Hotkey press dispatcher. First turn (no chat yet) → push-to-talk; the
-    /// recording is driven by press/release. Subsequent turns → toggle, so the
-    /// user doesn't have to hold the chord during longer follow-up dictations.
+    /// Push-to-talk for every turn — press starts recording, release sends.
+    /// Mirrors what users expect from a Slack/Discord push-to-talk and avoids
+    /// the "did I forget to untoggle?" confusion.
     func handleHotkeyPress() {
-        if isFirstTurn {
-            startCapture()
-        } else {
-            toggleCapture()
-        }
+        startCapture()
     }
 
-    /// Hotkey release dispatcher. Only meaningful for the first push-to-talk
-    /// turn — once the chat exists, releases are ignored and the next press
-    /// ends the recording.
     func handleHotkeyRelease() {
-        guard isFirstTurn else { return }
         finishCapture()
-    }
-
-    /// Used by the toggle path: flip between idle and capturing on each press.
-    func toggleCapture() {
-        if isCapturing {
-            finishCapture()
-        } else {
-            startCapture()
-        }
     }
 
     /// Hotkey press handler — starts recording audio.

@@ -87,7 +87,7 @@ final class GbrainSaver {
         ---
         anchor-type: \(anchorType.rawValue)
         captured-at: \(isoDate)
-        captured-by: Mindflow
+        captured-by: Brainiac
         ---
         # Voice note
 

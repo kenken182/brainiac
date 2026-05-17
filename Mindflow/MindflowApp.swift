@@ -20,7 +20,7 @@ struct MindflowApp: App {
         }
 
         MenuBarExtra {
-            MenuBarMenuContent()
+            MenuBarMenuContent(appCore: appCore)
         } label: {
             MindflowMenuBarIcon(state: appCore.popup.state)
                 .task { appCore.start() }
@@ -30,9 +30,23 @@ struct MindflowApp: App {
 }
 
 struct MenuBarMenuContent: View {
+    let appCore: AppCore
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        // Reading PopupState directly inside the menu keeps the "Resume chat"
+        // item reactive — it appears/disappears as soon as the popup is
+        // minimized or restored.
+        let state = appCore.popup.state
+
+        if state.isMinimized {
+            Button("Resume chat") {
+                appCore.popup.restore()
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            Divider()
+        }
+
         Button("Open Mindflow Dashboard") {
             openWindow(id: "dashboard")
             NSApp.activate(ignoringOtherApps: true)

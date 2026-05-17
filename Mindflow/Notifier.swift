@@ -24,7 +24,7 @@ final class Notifier {
 
     func notify(_ message: String) async {
         let content = UNMutableNotificationContent()
-        content.title = "Mindflow"
+        content.title = "Brainiac"
         content.body = message
         content.sound = .default
 

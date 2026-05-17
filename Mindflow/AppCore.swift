@@ -94,7 +94,7 @@ final class AppCore {
         dismissHotkey.start()
         Task { [notifier] in
             await notifier.requestAuthorizationIfNeeded()
-            await notifier.notify("Mindflow is running. Hold ctrl+option to start; tap to keep talking.")
+            await notifier.notify("Brainiac is running. Hold ctrl+option to start; tap to keep talking.")
         }
     }
 }

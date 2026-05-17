@@ -37,7 +37,7 @@ struct DashboardView: View {
         } detail: {
             detail
         }
-        .navigationTitle("Mindflow")
+        .navigationTitle("Brainiac")
     }
 
     // MARK: - sidebar

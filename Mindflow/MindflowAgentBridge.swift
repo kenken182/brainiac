@@ -236,7 +236,17 @@ final class MindflowAgentBridge {
     private func buildEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         let nodeDir = nodeExecutableURL.deletingLastPathComponent().path
-        let baseline = "/Users/\(NSUserName())/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        // `~/.bun/bin` is where `gbrain` (a Bun-runtime CLI) lives. Without it
+        // the SDK's Bash tool can't resolve `gbrain put|search|get` and the
+        // agent falls back to "gbrain isn't on PATH" responses.
+        let home = "/Users/\(NSUserName())"
+        let baseline = [
+            "\(home)/.local/bin",
+            "\(home)/.bun/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ].joined(separator: ":")
         env["PATH"] = [nodeDir, env["PATH"] ?? "", baseline].filter { !$0.isEmpty }.joined(separator: ":")
         if let claude = claudeExecutableURL {
             env["MINDFLOW_CLAUDE_EXECUTABLE"] = claude.path

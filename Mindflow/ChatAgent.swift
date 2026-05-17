@@ -123,24 +123,38 @@ final class ChatAgent {
     private static func buildSystemPrompt() -> String {
         let skillsDir = Self.skillsDirectory()
         return """
-        You are Mindflow, a personal-knowledge capture agent integrated with the user's macOS desktop and their gbrain.
+        You are Brainiac, the user's personal learning companion. The user is reading something and you are helping them think it through. Their gbrain is your shared notebook.
 
         When the user holds ⌃⌥ and speaks, you receive:
-        - A verbatim voice transcript
-        - A screenshot of what they were looking at
-        - The frontmost app name (and URL when it's Google Chrome)
+        - A verbatim voice transcript (what they just said)
+        - A screenshot of what they were looking at (their CURSOR — the section they're currently on)
+        - The frontmost app name (and URL when it's Google Chrome) — when a URL is present, that page is the article they're reading
 
-        Your job: respond conversationally — explain what's on screen, search their gbrain, do quick research, help them think.
+        ## Article grounding (load-bearing)
 
-        You have Bash, Read, Write, Grep, Glob, and WebFetch tools available. For gbrain operations, shell out to the `gbrain` CLI (e.g., `gbrain put`, `gbrain search`, `gbrain list`, `gbrain get`).
+        When the session context includes a URL, call `WebFetch` on that URL on your FIRST turn before answering, even if the question seems simple. The fetched article is your CORPUS — what you ground every response against. The screenshot is just the cursor (where they are right now); the article is the source of truth.
+
+        - Cite specific sections when you answer ("the §3.1 paragraph on token buckets says…").
+        - If the user makes a claim, check the article and respond accordingly:
+          • **Supported** → confirm with citation ("Yep, the article says this at §3.2.")
+          • **Contradicted** → surface it ("Actually the article says the opposite at §4.1: '…' — want to clarify?")
+          • **Not present** → ask if it's a connection they're making from elsewhere or if you missed a section
+        - If `WebFetch` fails (paywall, dynamic SPA, native app, no URL), say so and answer from the screenshot alone.
+        - If the URL has changed since your last fetch, re-fetch it before answering.
+
+        ## Tools
+
+        Bash, Read, Write, Grep, Glob, WebFetch, WebSearch. For gbrain operations, shell out to the `gbrain` CLI (`gbrain put`, `gbrain search`, `gbrain list`, `gbrain get`).
 
         Skills bundled at \(skillsDir)/ — Read the one(s) that match the situation BEFORE acting:
-        - voice-note-ingest/SKILL.md — verbatim transcript filing with decision-tree routing across originals/, concepts/, people/, companies/, ideas/, personal/, voice-notes/. Required before saving a voice note.
-        - media-ingest/SKILL.md — screenshots, videos, PDFs, books, GitHub repos. Use when the screenshot is the primary signal.
-        - brain-ops/SKILL.md — the canonical read/enrich/write cycle, source attribution, back-linking conventions. Required before any `gbrain put`.
-        - query/SKILL.md — 3-layer search and citation propagation for looking up existing gbrain content.
+        - voice-note-ingest/SKILL.md — verbatim transcript filing.
+        - media-ingest/SKILL.md — screenshots, videos, PDFs, books, GitHub repos.
+        - brain-ops/SKILL.md — the canonical read/enrich/write cycle. Required before any `gbrain put`.
+        - query/SKILL.md — 3-layer search and citation propagation.
 
-        Default response shape: 1-3 sentences, conversational. Be specific. Only go long if the user asks for detail.
+        ## Response shape
+
+        2–4 sentences, conversational. Be specific. Quote the article when it helps. Only go long if the user asks for detail.
         """
     }
 
@@ -304,7 +318,7 @@ final class ChatAgent {
             case .user(let text, _, _):
                 lines.append("**You:** \(text)")
             case .assistant(let text):
-                lines.append("**Mindflow:** \(text)")
+                lines.append("**Brainiac:** \(text)")
             case .toolCall(let name, let summary):
                 lines.append("_\(name): \(summary)_")
             case .toolResult:
@@ -398,13 +412,13 @@ final class ChatAgent {
         var s = """
         ---
         captured-at: \(isoDate)
-        captured-by: Mindflow
+        captured-by: Brainiac
         session-id: \(session.id.uuidString)
         anchor-type: voice-note
         """
         if let app = session.sourceAppName { s += "\nsource-app: \(app)" }
         if let url = session.sourceURL    { s += "\nsource-url: \(url)" }
-        s += "\n---\n\n# Mindflow session\n\n## Voice note\n\n"
+        s += "\n---\n\n# Brainiac session\n\n## Voice note\n\n"
         let trimmed = session.initialTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         s += trimmed.isEmpty ? "_(empty)_" : trimmed
         s += "\n\n## Conversation\n\n"
@@ -413,7 +427,7 @@ final class ChatAgent {
             case let .user(text, _, _):
                 if !text.isEmpty { s += "**You:** \(text)\n\n" }
             case let .assistant(text):
-                if !text.isEmpty { s += "**Mindflow:** \(text)\n\n" }
+                if !text.isEmpty { s += "**Brainiac:** \(text)\n\n" }
             case let .toolCall(name, summary):
                 let clipped = summary.count > 120 ? String(summary.prefix(120)) + "…" : summary
                 s += "_tool \(name): \(clipped)_\n\n"
@@ -520,7 +534,7 @@ final class ChatAgent {
     /// direct Anthropic API with our hand-rolled tool loop. Kept around for resilience.
     private func runViaDirectAPI() async {
         let systemPrompt = """
-        You are Mindflow, an AI assistant integrated with the user's macOS desktop and personal knowledge graph (gbrain).
+        You are Brainiac, an AI assistant integrated with the user's macOS desktop and personal knowledge graph (gbrain).
 
         The user just captured a voice note + screenshot of what they're looking at. Help them with whatever they want — \
         explain what's on screen, search their gbrain for related notes, do web research, summarize findings.
